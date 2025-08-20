@@ -1,0 +1,30 @@
+{
+  "listenIP": "0.0.0.0",
+  "http": {
+    "port": 3000
+  },
+  "https": {
+    "enabled": false,
+    "port": 3443,
+    "keyPath": "./ssl/private.key",
+    "certPath": "./ssl/certificate.crt"
+  },
+  "staticDir": "./public",
+  "cache": {
+    "enabled": true,
+    "ttl": 60000
+  },
+  "rateLimit": {
+    "enabled": true,
+    "windowMs": 60000,
+    "max": 100
+  },
+  "logging": {
+    "level": "info",
+    "console": true,
+    "file": "./logs/api.log",
+    "colors": true,
+    "timestamp": true,
+    "maxFileSize": 10485760
+  }
+}

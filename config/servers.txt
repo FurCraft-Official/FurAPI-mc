@@ -1,0 +1,28 @@
+# Minecraft 服务器配置文件
+# 格式: 服务器名称=地址:端口:类型:是否SRV记录
+# 端口: Java版默认25565，基岩版默认19132
+# 类型: java(默认) 或 bedrock
+# SRV记录: true 或 false(默认)
+# 以#开头的行为注释
+
+# Java版服务器
+hypixel=mc.hypixel.net:25565:java:false
+mineplex=us.mineplex.com:25565:java:false
+furcraft=play.furcraft.top:25565:java:false
+furmod=mod.furcraft.top:25565:java:false
+
+# 基岩版服务器
+bedrock-server=mco.mineplex.com:19132:bedrock:false
+cubecraft-bedrock=mco.cubecraft.net:19132:bedrock:false
+
+# 使用SRV记录的服务器
+srv-example=_minecraft._tcp.example.com:25565:java:true
+
+# 本地服务器
+local-java=localhost:25565:java:false
+local-bedrock=localhost:19132:bedrock:false
+test-server=127.0.0.1:25566:java:false
+
+# 其他服务器
+example1=example.com:25565:java:false
+example2=play.example.net:25567:java:false
