@@ -14,12 +14,12 @@ class BedrockPing {
         return new Promise((resolve, reject) => {
             const dgram = require('dgram');
             const client = dgram.createSocket('udp4');
-            
+
             // 基岩版查询包
-            const queryPacket = Buffer.from([ 
+            const queryPacket = Buffer.from([
                 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0xff, 0xff, 0x00, 0xfe, 0xfe, 0xfe, 
-                0xfe, 0xfd, 0xfd, 0xfd, 0xfd, 0x12, 0x34, 0x56, 0x78 
+                0x00, 0x00, 0xff, 0xff, 0x00, 0xfe, 0xfe, 0xfe,
+                0xfe, 0xfd, 0xfd, 0xfd, 0xfd, 0x12, 0x34, 0x56, 0x78
             ]);
 
             const timer = setTimeout(() => {
@@ -38,7 +38,7 @@ class BedrockPing {
             client.on('message', (msg) => {
                 clearTimeout(timer);
                 client.close();
-                
+
                 try {
                     const data = msg.toString('utf8').split(';');
                     if (data.length >= 6) {
@@ -78,12 +78,12 @@ class CacheManager {
     get(key) {
         const item = this.cache.get(key);
         if (!item) return null;
-        
+
         if (Date.now() > item.expiry) {
             this.cache.delete(key);
             return null;
         }
-        
+
         return item.data;
     }
 
@@ -124,7 +124,7 @@ class MCStatusAPI {
             const serversPath = path.join('./config/servers.txt');
             const serversData = fs.readFileSync(serversPath, 'utf8');
             this.servers = new Map();
-            
+
             serversData.split('\n').forEach(line => {
                 line = line.trim();
                 if (line && !line.startsWith('#')) {
@@ -137,7 +137,7 @@ class MCStatusAPI {
                     }
                 }
             });
-            
+
             console.log(`已加载 ${this.servers.size} 个服务器配置`);
         } catch (error) {
             console.error('无法加载服务器配置:', error.message);
@@ -147,15 +147,82 @@ class MCStatusAPI {
 
     parseServerConfig(configStr) {
         const parts = configStr.split(':');
-        
+
         if (parts.length < 1) return null;
-        
+
         const address = parts[0];
         const port = parseInt(parts[1]) || (parts[2] === 'bedrock' ? 19132 : 25565);
         const type = parts[2] || 'java';
         const isSrv = parts[3] === 'true';
-        
+
         return { address, port, type, isSrv };
+    }
+
+    // 新增：解析 IP:Port 格式的参数
+    parseIpPort(ipPortStr, clientIP) {
+        // 验证输入格式
+        if (!ipPortStr || typeof ipPortStr !== 'string') {
+            this.logger.warn(clientIP, `/api/stats/direct/${ipPortStr}`, '无效的IP:Port格式');
+            throw new Error('无效的IP:Port格式');
+        }
+
+        // 支持 IPv4:Port 和 IPv6:Port 格式
+        let host, port, type = 'java';
+
+        // 检查是否包含类型参数 (ip:port:type)
+        const parts = ipPortStr.split(':');
+
+        if (parts.length < 2) {
+            throw new Error('缺少端口号');
+        }
+
+        if (parts.length === 2) {
+            // 格式: ip:port
+            host = parts[0];
+            port = parseInt(parts[1]);
+        } else if (parts.length === 3) {
+            // 格式: ip:port:type 或 IPv6的情况
+            if (parts[2] === 'java' || parts[2] === 'bedrock') {
+                host = parts[0];
+                port = parseInt(parts[1]);
+                type = parts[2];
+            } else {
+                // 可能是 IPv6 地址
+                host = parts.slice(0, -1).join(':');
+                port = parseInt(parts[parts.length - 1]);
+            }
+        } else {
+            // 处理 IPv6 地址或其他复杂情况
+            // 假设最后一个或最后两个部分是端口和类型
+            const lastPart = parts[parts.length - 1];
+            const secondLastPart = parts[parts.length - 2];
+
+            if (lastPart === 'java' || lastPart === 'bedrock') {
+                // 格式: ipv6:port:type
+                type = lastPart;
+                port = parseInt(secondLastPart);
+                host = parts.slice(0, -2).join(':');
+            } else {
+                // 格式: ipv6:port
+                port = parseInt(lastPart);
+                host = parts.slice(0, -1).join(':');
+            }
+        }
+
+        // 验证端口号
+        if (isNaN(port) || port < 1 || port > 65535) {
+            throw new Error('无效的端口号');
+        }
+
+        // 验证主机名/IP
+        if (!host || host.trim() === '') {
+            throw new Error('无效的主机地址');
+        }
+
+        // 清理主机名（移除方括号如果是IPv6）
+        host = host.replace(/^\[|\]$/g, '');
+
+        return { address: host, port, type, isSrv: false };
     }
 
     async resolveSrvRecord(domain) {
@@ -253,7 +320,7 @@ class MCStatusAPI {
         try {
             let status;
             const startTime = Date.now();
-            
+
             if (server.type === 'bedrock') {
                 status = await this.pingBedrockServer(host, port);
             } else {
@@ -295,6 +362,70 @@ class MCStatusAPI {
         }
     }
 
+    // 新增：直接通过 IP:Port 查询服务器状态
+    async getServerStatusByIpPort(ipPortStr, clientIP) {
+        // 解析 IP:Port 参数
+        const serverConfig = this.parseIpPort(ipPortStr, clientIP);
+        const cacheKey = `direct_${serverConfig.address}_${serverConfig.port}_${serverConfig.type}`;
+
+        // 检查缓存
+        if (this.config.cache.enabled) {
+            const cached = this.cache.get(cacheKey);
+            if (cached) {
+                this.logger.info(clientIP, `/api/stats/direct/${ipPortStr}`, '返回缓存数据');
+                return cached;
+            }
+        }
+
+        try {
+            let status;
+            const startTime = Date.now();
+
+            if (serverConfig.type === 'bedrock') {
+                status = await this.pingBedrockServer(serverConfig.address, serverConfig.port);
+            } else {
+                status = await this.pingJavaServer(serverConfig.address, serverConfig.port);
+            }
+
+            const pingTime = Date.now() - startTime;
+
+            const result = {
+                name: `${serverConfig.address}:${serverConfig.port}`,
+                address: serverConfig.address,
+                port: serverConfig.port,
+                online: true,
+                type: status.type,
+                version: status.version,
+                players: status.players,
+                ping: status.ping || pingTime,
+                timestamp: Date.now(),
+                motd: status.motd,
+                icon: status.icon
+            };
+
+            // 存入缓存
+            if (this.config.cache.enabled) {
+                this.cache.set(cacheKey, result);
+            }
+
+            this.logger.info(clientIP, `/api/stats/direct/${ipPortStr}`,
+                `在线 ${status.players.online}/${status.players.max} [${status.type}] ${pingTime}ms`);
+            return result;
+        } catch (error) {
+            const result = {
+                name: `${serverConfig.address}:${serverConfig.port}`,
+                address: serverConfig.address,
+                port: serverConfig.port,
+                online: false,
+                error: error.message,
+                timestamp: Date.now()
+            };
+
+            this.logger.warn(clientIP, `/api/stats/direct/${ipPortStr}`, `离线 - ${error.message}`);
+            return result;
+        }
+    }
+
     setupRoutes() {
         const app = this.webServer.app;
 
@@ -327,7 +458,23 @@ class MCStatusAPI {
             res.json({ servers: serverList });
         });
 
-        // 获取单个服务器状态
+        // 【新增】直接通过 IP:Port 查询服务器状态
+        apiRouter.get('/stats/direct/:ipport(*)', async (req, res) => {
+            const clientIP = this.webServer.getClientIP(req);
+            const ipPortStr = req.params.ipport;
+
+            try {
+                const status = await this.getServerStatusByIpPort(ipPortStr, clientIP);
+                res.json(status);
+            } catch (error) {
+                res.status(400).json({
+                    error: error.message,
+                    example: "127.0.0.1:25565 or 192.168.1.100:19132:bedrock"
+                });
+            }
+        });
+
+        // 获取单个服务器状态（配置文件中的服务器）
         apiRouter.get('/stats/:serverName', async (req, res) => {
             const clientIP = this.webServer.getClientIP(req);
             const serverName = req.params.serverName;
