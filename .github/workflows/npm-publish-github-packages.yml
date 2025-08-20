@@ -39,7 +39,7 @@ jobs:
           fi
 
       - name: Upload binaries
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: mc-status-api-${{ github.ref_name }}-${{ matrix.os }}
           path: dist/*
