@@ -784,7 +784,7 @@ math-intrinsics@^1.1.0:
   resolved "https://registry.yarnpkg.com/math-intrinsics/-/math-intrinsics-1.1.0.tgz#a0dd74be81e2aa5c2f27e65ce283605ee4e2b7f9"
   integrity sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==
 
-mc-ping-updated@^0.1.2:
+mc-ping-updated@^0.1.1:
   version "0.1.1"
   resolved "https://registry.yarnpkg.com/mc-ping-updated/-/mc-ping-updated-0.1.1.tgz#61b7fc237fa64b524d0d0d3569c0eaee97cdc7fd"
   integrity sha512-wYX4B41Jog+RvLFgYPytNvbw+b9mjjsKKqMLJ57a7aH3VgJCNzk6qeWFCTz7FLCWTEk8F81RBqh8kMPCjUVdNw==
