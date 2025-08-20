@@ -16,6 +16,11 @@
 
 ## 🚀 快速开始
 
+### 下载源码
+```bash
+git clone https://github.com/FurCraft-Official/FurAPI-mc.git
+```
+
 ### 安装依赖
 
 ```bash
@@ -301,20 +306,6 @@ npm run build:linux    # Linux x64
 npm run build:mac      # macOS x64
 ```
 
-### Docker 部署
-
-```dockerfile
-FROM node:18-alpine
-
-WORKDIR /app
-COPY package*.json ./
-RUN npm install --production
-
-COPY . .
-
-EXPOSE 3000
-CMD ["npm", "start"]
-```
 
 ## 📊 监控和日志
 
