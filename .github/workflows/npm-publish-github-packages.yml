@@ -3,7 +3,7 @@ name: Build and Release mc-status-api
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*'
 
 permissions:
   contents: write
