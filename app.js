@@ -1,16 +1,16 @@
-require('./init.js')
-require('dotenv').config();  // 加载 .env 文件
+require('./init.js');
+require('dotenv').config();
 
 const fs = require('fs');
 const path = require('path');
-const mcping = require('mc-ping-updated');
+const minecraft = require('minecraft-protocol');
 const dns = require('dns').promises;
 const Logger = require('./log');
 const WebServer = require('./web');
 
 // 基岩版 ping 实现
 class BedrockPing {
-    static ping(host, port = 19132, timeout = 5000) {
+    static async ping(host, port = 19132, timeout = 5000) {
         return new Promise((resolve, reject) => {
             const dgram = require('dgram');
             const client = dgram.createSocket('udp4');
@@ -50,7 +50,7 @@ class BedrockPing {
                             maxPlayers: parseInt(data[5]) || 0,
                             gamemode: data[8] || '',
                             serverId: data[0] || '',
-                            icon: null  // 暂时返回 null 或者替换为实际图标
+                            icon: null
                         });
                     } else {
                         reject(new Error('无效的基岩版响应数据'));
@@ -69,21 +69,85 @@ class BedrockPing {
     }
 }
 
+// Java版 ping 实现（使用 minecraft-protocol）
+class JavaPing {
+    static async ping(host, port = 25565, timeout = 5000) {
+        return new Promise((resolve, reject) => {
+            const startTime = Date.now();
+            
+            // 使用 minecraft-protocol 的 ping 功能
+            minecraft.ping({
+                host: host,
+                port: port,
+                timeout: timeout
+            }, (err, result) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+
+                const pingTime = Date.now() - startTime;
+                
+                try {
+                    // 解析响应数据
+                    let motd = 'No MOTD';
+                    if (result.description) {
+                        if (typeof result.description === 'string') {
+                            motd = result.description;
+                        } else if (result.description.text) {
+                            motd = result.description.text;
+                        } else if (result.description.translate) {
+                            motd = result.description.translate;
+                        }
+                    }
+
+                    resolve({
+                        type: 'java',
+                        version: result.version?.name || 'Unknown',
+                        protocol: result.version?.protocol || 0,
+                        players: {
+                            online: result.players?.online || 0,
+                            max: result.players?.max || 0
+                        },
+                        ping: result.latency || pingTime,
+                        motd: motd,
+                        icon: result.favicon || null,
+                        modinfo: result.modinfo || null
+                    });
+                } catch (parseError) {
+                    reject(new Error(`解析响应失败: ${parseError.message}`));
+                }
+            });
+        });
+    }
+}
+
+// 缓存管理器
 class CacheManager {
     constructor(ttl = 60000) {
         this.cache = new Map();
         this.ttl = ttl;
+        this.stats = {
+            hits: 0,
+            misses: 0,
+            sets: 0
+        };
     }
 
     get(key) {
         const item = this.cache.get(key);
-        if (!item) return null;
-
-        if (Date.now() > item.expiry) {
-            this.cache.delete(key);
+        if (!item) {
+            this.stats.misses++;
             return null;
         }
 
+        if (Date.now() > item.expiry) {
+            this.cache.delete(key);
+            this.stats.misses++;
+            return null;
+        }
+
+        this.stats.hits++;
         return item.data;
     }
 
@@ -92,62 +156,40 @@ class CacheManager {
             data,
             expiry: Date.now() + this.ttl
         });
+        this.stats.sets++;
     }
 
     clear() {
+        const size = this.cache.size;
         this.cache.clear();
+        return size;
+    }
+
+    getStats() {
+        return {
+            ...this.stats,
+            size: this.cache.size,
+            hitRate: this.stats.hits / (this.stats.hits + this.stats.misses) || 0
+        };
+    }
+
+    // 清理过期缓存项
+    cleanup() {
+        let cleaned = 0;
+        for (const [key, item] of this.cache.entries()) {
+            if (Date.now() > item.expiry) {
+                this.cache.delete(key);
+                cleaned++;
+            }
+        }
+        return cleaned;
     }
 }
 
-class MCStatusAPI {
-    constructor() {
-        this.loadConfig();
-        this.loadServers();
-        this.logger = new Logger(this.config.logging);
-        this.cache = new CacheManager(this.config.cache.ttl);
-        this.webServer = new WebServer(this.config, this.logger);
-        this.setupRoutes();
-    }
-
-    loadConfig() {
-        try {
-            const configPath = path.join('./config/config.json');
-            this.config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        } catch (error) {
-            console.error('无法加载配置文件:', error.message);
-            process.exit(1);
-        }
-    }
-
-    loadServers() {
-        try {
-            const serversPath = path.join('./config/servers.txt');
-            const serversData = fs.readFileSync(serversPath, 'utf8');
-            this.servers = new Map();
-
-            serversData.split('\n').forEach(line => {
-                line = line.trim();
-                if (line && !line.startsWith('#')) {
-                    const [name, config] = line.split('=');
-                    if (name && config) {
-                        const serverConfig = this.parseServerConfig(config.trim());
-                        if (serverConfig) {
-                            this.servers.set(name.trim(), serverConfig);
-                        }
-                    }
-                }
-            });
-
-            console.log(`已加载 ${this.servers.size} 个服务器配置`);
-        } catch (error) {
-            console.error('无法加载服务器配置:', error.message);
-            process.exit(1);
-        }
-    }
-
-    parseServerConfig(configStr) {
+// 服务器配置解析器
+class ServerConfigParser {
+    static parseConfig(configStr) {
         const parts = configStr.split(':');
-
         if (parts.length < 1) return null;
 
         const address = parts[0];
@@ -155,21 +197,25 @@ class MCStatusAPI {
         const type = parts[2] || 'java';
         const isSrv = parts[3] === 'true';
 
+        // 验证服务器类型
+        if (!['java', 'bedrock'].includes(type)) {
+            throw new Error(`不支持的服务器类型: ${type}`);
+        }
+
+        // 验证端口范围
+        if (port < 1 || port > 65535) {
+            throw new Error(`无效的端口号: ${port}`);
+        }
+
         return { address, port, type, isSrv };
     }
 
-    // 新增：解析 IP:Port 格式的参数
-    parseIpPort(ipPortStr, clientIP) {
-        // 验证输入格式
+    static parseIpPort(ipPortStr) {
         if (!ipPortStr || typeof ipPortStr !== 'string') {
-            this.logger.warn(clientIP, `/api/stats/direct/${ipPortStr}`, '无效的IP:Port格式');
             throw new Error('无效的IP:Port格式');
         }
 
-        // 支持 IPv4:Port 和 IPv6:Port 格式
         let host, port, type = 'java';
-
-        // 检查是否包含类型参数 (ip:port:type)
         const parts = ipPortStr.split(':');
 
         if (parts.length < 2) {
@@ -181,7 +227,7 @@ class MCStatusAPI {
             host = parts[0];
             port = parseInt(parts[1]);
         } else if (parts.length === 3) {
-            // 格式: ip:port:type 或 IPv6的情况
+            // 格式: ip:port:type 或 IPv6
             if (parts[2] === 'java' || parts[2] === 'bedrock') {
                 host = parts[0];
                 port = parseInt(parts[1]);
@@ -192,18 +238,15 @@ class MCStatusAPI {
                 port = parseInt(parts[parts.length - 1]);
             }
         } else {
-            // 处理 IPv6 地址或其他复杂情况
-            // 假设最后一个或最后两个部分是端口和类型
+            // 处理复杂的 IPv6 地址
             const lastPart = parts[parts.length - 1];
             const secondLastPart = parts[parts.length - 2];
 
             if (lastPart === 'java' || lastPart === 'bedrock') {
-                // 格式: ipv6:port:type
                 type = lastPart;
                 port = parseInt(secondLastPart);
                 host = parts.slice(0, -2).join(':');
             } else {
-                // 格式: ipv6:port
                 port = parseInt(lastPart);
                 host = parts.slice(0, -1).join(':');
             }
@@ -224,11 +267,75 @@ class MCStatusAPI {
 
         return { address: host, port, type, isSrv: false };
     }
+}
+
+// 主应用类
+class MCStatusAPI {
+    constructor() {
+        this.loadConfig();
+        this.loadServers();
+        this.logger = new Logger(this.config.logging);
+        this.cache = new CacheManager(this.config.cache.ttl);
+        this.webServer = new WebServer(this.config, this.logger);
+        this.setupRoutes();
+        this.setupCleanupTasks();
+    }
+
+    loadConfig() {
+        try {
+            const configPath = path.join('./config/config.json');
+            this.config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            
+            // 配置默认值
+            this.config.cache = this.config.cache || {};
+            this.config.cache.ttl = this.config.cache.ttl || 60000;
+            this.config.cache.enabled = this.config.cache.enabled !== false;
+            
+        } catch (error) {
+            console.error('无法加载配置文件:', error.message);
+            process.exit(1);
+        }
+    }
+
+    loadServers() {
+        try {
+            const serversPath = path.join('./config/servers.txt');
+            const serversData = fs.readFileSync(serversPath, 'utf8');
+            this.servers = new Map();
+
+            let lineNumber = 0;
+            serversData.split('\n').forEach(line => {
+                lineNumber++;
+                line = line.trim();
+                
+                if (line && !line.startsWith('#')) {
+                    const [name, config] = line.split('=');
+                    if (name && config) {
+                        try {
+                            const serverConfig = ServerConfigParser.parseConfig(config.trim());
+                            if (serverConfig) {
+                                this.servers.set(name.trim(), serverConfig);
+                            }
+                        } catch (error) {
+                            console.warn(`配置文件第${lineNumber}行解析错误: ${error.message}`);
+                        }
+                    }
+                }
+            });
+
+            console.log(`已加载 ${this.servers.size} 个服务器配置`);
+        } catch (error) {
+            console.error('无法加载服务器配置:', error.message);
+            process.exit(1);
+        }
+    }
 
     async resolveSrvRecord(domain) {
         try {
             const records = await dns.resolveSrv(domain);
             if (records && records.length > 0) {
+                // 按优先级排序，选择最高优先级的记录
+                records.sort((a, b) => a.priority - b.priority);
                 const record = records[0];
                 return {
                     host: record.name,
@@ -241,47 +348,13 @@ class MCStatusAPI {
         throw new Error('未找到SRV记录');
     }
 
-    async pingJavaServer(host, port) {
-        return new Promise((resolve, reject) => {
-            mcping(host, port, (err, res) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve({
-                        type: 'java',
-                        version: res.version?.name || 'Unknown',
-                        protocol: res.version?.protocol || 0,
-                        players: {
-                            online: res.players?.online || 0,
-                            max: res.players?.max || 0
-                        },
-                        ping: res.ping || 0,
-                        motd: res.description || 'No MOTD',  // 获取 motd
-                        icon: res.favicon || null  // 获取图标（base64 编码）
-                    });
-                }
-            }, 5000);
-        });
-    }
-
-    async pingBedrockServer(host, port) {
-        try {
-            const res = await BedrockPing.ping(host, port);
-            return {
-                type: 'bedrock',
-                version: res.version || 'Unknown',
-                protocol: res.protocol || 0,
-                players: {
-                    online: res.currentPlayers || 0,
-                    max: res.maxPlayers || 0
-                },
-                ping: 0,
-                gamemode: res.gamemode || '',
-                motd: res.motd || 'No MOTD',  // 获取 motd
-                icon: null  // 返回图标（可以提供默认图标或通过 URL 获取）
-            };
-        } catch (error) {
-            throw error;
+    async pingServer(host, port, type) {
+        const timeout = this.config.ping?.timeout || 5000;
+        
+        if (type === 'bedrock') {
+            return await BedrockPing.ping(host, port, timeout);
+        } else {
+            return await JavaPing.ping(host, port, timeout);
         }
     }
 
@@ -304,7 +377,7 @@ class MCStatusAPI {
         let host = server.address;
         let port = server.port;
 
-        // 如果是SRV记录，先解析
+        // SRV记录解析
         if (server.isSrv) {
             try {
                 const srvResult = await this.resolveSrvRecord(server.address);
@@ -318,27 +391,25 @@ class MCStatusAPI {
         }
 
         try {
-            let status;
             const startTime = Date.now();
-
-            if (server.type === 'bedrock') {
-                status = await this.pingBedrockServer(host, port);
-            } else {
-                status = await this.pingJavaServer(host, port);
-            }
-
-            const pingTime = Date.now() - startTime;
+            const status = await this.pingServer(host, port, server.type);
+            const totalTime = Date.now() - startTime;
 
             const result = {
                 name: serverName,
                 online: true,
-                type: status.type,
+                type: status.type || server.type,
                 version: status.version,
-                players: status.players,
-                ping: status.ping || pingTime,
+                players: status.players || {
+                    online: status.currentPlayers || 0,
+                    max: status.maxPlayers || 0
+                },
+                ping: status.ping || totalTime,
                 timestamp: Date.now(),
                 motd: status.motd,
-                icon: status.icon
+                icon: status.icon,
+                gamemode: status.gamemode,
+                modinfo: status.modinfo
             };
 
             // 存入缓存
@@ -347,7 +418,7 @@ class MCStatusAPI {
             }
 
             this.logger.info(clientIP, `/api/stats/${serverName}`,
-                `在线 ${status.players.online}/${status.players.max} [${status.type}] ${pingTime}ms`);
+                `在线 ${result.players.online}/${result.players.max} [${result.type}] ${result.ping}ms`);
             return result;
         } catch (error) {
             const result = {
@@ -362,10 +433,8 @@ class MCStatusAPI {
         }
     }
 
-    // 新增：直接通过 IP:Port 查询服务器状态
     async getServerStatusByIpPort(ipPortStr, clientIP) {
-        // 解析 IP:Port 参数
-        const serverConfig = this.parseIpPort(ipPortStr, clientIP);
+        const serverConfig = ServerConfigParser.parseIpPort(ipPortStr);
         const cacheKey = `direct_${serverConfig.address}_${serverConfig.port}_${serverConfig.type}`;
 
         // 检查缓存
@@ -378,29 +447,27 @@ class MCStatusAPI {
         }
 
         try {
-            let status;
             const startTime = Date.now();
-
-            if (serverConfig.type === 'bedrock') {
-                status = await this.pingBedrockServer(serverConfig.address, serverConfig.port);
-            } else {
-                status = await this.pingJavaServer(serverConfig.address, serverConfig.port);
-            }
-
-            const pingTime = Date.now() - startTime;
+            const status = await this.pingServer(serverConfig.address, serverConfig.port, serverConfig.type);
+            const totalTime = Date.now() - startTime;
 
             const result = {
                 name: `${serverConfig.address}:${serverConfig.port}`,
                 address: serverConfig.address,
                 port: serverConfig.port,
                 online: true,
-                type: status.type,
+                type: status.type || serverConfig.type,
                 version: status.version,
-                players: status.players,
-                ping: status.ping || pingTime,
+                players: status.players || {
+                    online: status.currentPlayers || 0,
+                    max: status.maxPlayers || 0
+                },
+                ping: status.ping || totalTime,
                 timestamp: Date.now(),
                 motd: status.motd,
-                icon: status.icon
+                icon: status.icon,
+                gamemode: status.gamemode,
+                modinfo: status.modinfo
             };
 
             // 存入缓存
@@ -409,7 +476,7 @@ class MCStatusAPI {
             }
 
             this.logger.info(clientIP, `/api/stats/direct/${ipPortStr}`,
-                `在线 ${status.players.online}/${status.players.max} [${status.type}] ${pingTime}ms`);
+                `在线 ${result.players.online}/${result.players.max} [${result.type}] ${result.ping}ms`);
             return result;
         } catch (error) {
             const result = {
@@ -429,21 +496,26 @@ class MCStatusAPI {
     setupRoutes() {
         const app = this.webServer.app;
 
-        // 环境变量 token 验证中间件
+        // Token验证中间件
         const tokenMiddleware = (req, res, next) => {
-            const token = req.query.token;
+            const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
             if (!token || token !== process.env.ADMIN_TOKEN) {
-                return res.status(403).json({ error: '无效的 token' });
+                return res.status(403).json({ error: '无效的token' });
             }
             next();
         };
 
         // 健康检查
         app.get('/health', (req, res) => {
-            res.json({ status: 'ok', timestamp: Date.now() });
+            res.json({ 
+                status: 'ok', 
+                timestamp: Date.now(),
+                uptime: process.uptime(),
+                memory: process.memoryUsage(),
+                cache: this.cache.getStats()
+            });
         });
 
-        // API路由组
         const apiRouter = require('express').Router();
 
         // 获取所有服务器列表
@@ -455,10 +527,13 @@ class MCStatusAPI {
                 address: config.address,
                 port: config.port
             }));
-            res.json({ servers: serverList });
+            res.json({ 
+                servers: serverList,
+                count: serverList.length
+            });
         });
 
-        // 【新增】直接通过 IP:Port 查询服务器状态
+        // 直接通过IP:Port查询
         apiRouter.get('/stats/direct/:ipport(*)', async (req, res) => {
             const clientIP = this.webServer.getClientIP(req);
             const ipPortStr = req.params.ipport;
@@ -469,12 +544,16 @@ class MCStatusAPI {
             } catch (error) {
                 res.status(400).json({
                     error: error.message,
-                    example: "127.0.0.1:25565 or 192.168.1.100:19132:bedrock"
+                    examples: [
+                        "127.0.0.1:25565",
+                        "192.168.1.100:19132:bedrock",
+                        "[2001:db8::1]:25565:java"
+                    ]
                 });
             }
         });
 
-        // 获取单个服务器状态（配置文件中的服务器）
+        // 获取单个服务器状态
         apiRouter.get('/stats/:serverName', async (req, res) => {
             const clientIP = this.webServer.getClientIP(req);
             const serverName = req.params.serverName;
@@ -491,6 +570,7 @@ class MCStatusAPI {
         apiRouter.get('/stats', async (req, res) => {
             const clientIP = this.webServer.getClientIP(req);
             const results = {};
+            const startTime = Date.now();
 
             this.logger.info(clientIP, '/api/stats', `查询所有服务器状态`);
 
@@ -509,56 +589,87 @@ class MCStatusAPI {
             });
 
             await Promise.all(promises);
-            res.json(results);
+            
+            const totalTime = Date.now() - startTime;
+            res.json({
+                results,
+                meta: {
+                    total: this.servers.size,
+                    queryTime: totalTime,
+                    timestamp: Date.now()
+                }
+            });
         });
 
-        // 管理端缓存清除
+        // 管理接口
+        apiRouter.get('/admin/cache/stats', tokenMiddleware, (req, res) => {
+            res.json(this.cache.getStats());
+        });
+
         apiRouter.post('/admin/cache/clear', tokenMiddleware, (req, res) => {
             const clientIP = this.webServer.getClientIP(req);
-            this.cache.clear();
-            this.logger.info(clientIP, '/api/admin/cache/clear', '缓存已清除');
-            res.json({ message: '缓存已清除' });
+            const cleared = this.cache.clear();
+            this.logger.info(clientIP, '/api/admin/cache/clear', `已清除 ${cleared} 个缓存项`);
+            res.json({ message: '缓存已清除', cleared });
         });
 
-        // 重新加载服务器配置
         apiRouter.post('/admin/reload', tokenMiddleware, (req, res) => {
             const clientIP = this.webServer.getClientIP(req);
             try {
                 this.loadServers();
                 this.cache.clear();
                 this.logger.info(clientIP, '/api/admin/reload', '配置已重新加载');
-                res.json({ message: '配置已重新加载', servers: this.servers.size });
+                res.json({ 
+                    message: '配置已重新加载', 
+                    servers: this.servers.size 
+                });
             } catch (error) {
                 this.logger.error(clientIP, '/api/admin/reload', error.message);
                 res.status(500).json({ error: '重新加载失败: ' + error.message });
             }
         });
 
-        // 挂载API路由到/api路径
+        // 挂载API路由
         app.use('/api', apiRouter);
 
         // 404处理
         app.use('*', (req, res) => {
             const clientIP = this.webServer.getClientIP(req);
-            this.logger.warn(clientIP, req.path, '资源不存在');
-            res.status(404).json({ error: '资源不存在' });
+            this.logger.warn(clientIP, req.originalUrl, '资源不存在');
+            res.status(404).json({ 
+                error: '资源不存在',
+                path: req.originalUrl
+            });
         });
+    }
+
+    setupCleanupTasks() {
+        // 定期清理过期缓存
+        setInterval(() => {
+            const cleaned = this.cache.cleanup();
+            if (cleaned > 0) {
+                this.logger.debug('system', 'cache-cleanup', `清理了 ${cleaned} 个过期缓存项`);
+            }
+        }, this.config.cache.cleanupInterval || 60000);
+
+        // 定期记录缓存统计
+        if (this.config.cache.logStats) {
+            setInterval(() => {
+                const stats = this.cache.getStats();
+                this.logger.info('system', 'cache-stats', 
+                    `缓存统计: 命中率 ${(stats.hitRate * 100).toFixed(2)}%, 大小 ${stats.size}`);
+            }, this.config.cache.statsInterval || 300000);
+        }
     }
 
     start() {
         this.webServer.start();
+        this.logger.info('system', 'startup', `MC状态API服务已启动`);
+    }
 
-        // 定期清理过期缓存
-        setInterval(() => {
-            const beforeSize = this.cache.cache.size;
-            for (const key of this.cache.cache.keys()) {
-                this.cache.get(key);
-            }
-            const afterSize = this.cache.cache.size;
-            if (beforeSize !== afterSize) {
-                this.logger.info('system', 'cache-cleanup', `清理了 ${beforeSize - afterSize} 个过期缓存项`);
-            }
-        }, 60000);
+    stop() {
+        this.webServer.stop();
+        this.logger.info('system', 'shutdown', 'MC状态API服务已关闭');
     }
 }
 
@@ -567,10 +678,14 @@ const api = new MCStatusAPI();
 api.start();
 
 // 优雅关闭
-process.on('SIGINT', () => {
-    console.log('\n正在关闭服务器...');
-    process.exit(0);
-});
+const shutdown = (signal) => {
+    console.log(`\n收到 ${signal} 信号，正在关闭服务器...`);
+    api.stop();
+    setTimeout(() => process.exit(0), 1000);
+};
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 process.on('uncaughtException', (error) => {
     console.error('未捕获异常:', error);

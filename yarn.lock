@@ -779,11 +779,6 @@ math-intrinsics@^1.1.0:
   resolved "https://registry.npmjs.org/math-intrinsics/-/math-intrinsics-1.1.0.tgz"
   integrity sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==
 
-mc-ping-updated@^0.1.1:
-  version "0.1.1"
-  resolved "https://registry.npmjs.org/mc-ping-updated/-/mc-ping-updated-0.1.1.tgz"
-  integrity sha512-wYX4B41Jog+RvLFgYPytNvbw+b9mjjsKKqMLJ57a7aH3VgJCNzk6qeWFCTz7FLCWTEk8F81RBqh8kMPCjUVdNw==
-
 media-typer@0.3.0:
   version "0.3.0"
   resolved "https://registry.npmjs.org/media-typer/-/media-typer-0.3.0.tgz"
