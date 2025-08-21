@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft 服务器状态查询 API</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Microsoft+YaHei:wght@400;700&display=swap');
+        
+        :root {
+            --mc-green: #4CAF50;
+            --mc-dark-green: #2E7D32;
+            --mc-brown: #8D6E63;
+            --mc-dark-brown: #5D4037;
+            --mc-gray: #616161;
+            --mc-light-gray: #F5F5F5;
+            --mc-blue: #2196F3;
+            --mc-red: #F44336;
+            --mc-yellow: #FFC107;
+            --mc-orange: #FF9800;
+        }
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', '微软雅黑', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: var(--mc-dark-brown);
+            color: white;
+            padding: 40px 0;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;
+            font-size: 2rem;
+            margin: 0;
+            text-shadow: 3px 3px 0px rgba(0,0,0,0.5);
+            font-weight: bold;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            margin: 15px 0 0 0;
+            opacity: 0.9;
+        }
+        
+        .content {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            overflow: hidden;
+        }
+        
+        .nav {
+            background: var(--mc-gray);
+            padding: 15px 20px;
+            border-bottom: 3px solid var(--mc-brown);
+        }
+        
+        .nav ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        
+        .nav a {
+            color: white;
+            text-decoration: none;
+            font-weight: 600;
+            padding: 8px 16px;
+            border-radius: 5px;
+            background: var(--mc-brown);
+            transition: all 0.3s;
+            display: block;
+        }
+        
+        .nav a:hover {
+            background: var(--mc-dark-brown);
+            transform: translateY(-2px);
+        }
+        
+        .main-content {
+            padding: 30px;
+        }
+        
+        h2 {
+            font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;
+            font-size: 1.3rem;
+            color: var(--mc-dark-green);
+            margin: 40px 0 20px 0;
+            padding: 15px;
+            background: var(--mc-light-gray);
+            border-left: 5px solid var(--mc-green);
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        
+        h3 {
+            color: var(--mc-brown);
+            font-size: 1.2rem;
+            margin: 30px 0 15px 0;
+            padding: 10px 0;
+            border-bottom: 2px solid var(--mc-light-gray);
+        }
+        
+        h4 {
+            color: var(--mc-gray);
+            margin: 25px 0 10px 0;
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        
+        .feature-card {
+            background: var(--mc-light-gray);
+            padding: 20px;
+            border-radius: 10px;
+            border: 2px solid var(--mc-green);
+            transition: transform 0.3s;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .feature-card h3 {
+            color: var(--mc-dark-green);
+            border: none;
+            margin-top: 0;
+        }
+        
+        .endpoint-card {
+            background: #f8f9fa;
+            border: 2px solid var(--mc-blue);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .endpoint-card h4 {
+            color: var(--mc-blue);
+            margin-top: 0;
+        }
+        
+        .http-method {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            font-size: 0.9rem;
+            margin-right: 10px;
+        }
+        
+        .get { background: var(--mc-green); color: white; }
+        .post { background: var(--mc-orange); color: white; }
+        
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            border-left: 4px solid var(--mc-green);
+            white-space: pre-wrap;
+            word-break: break-word;
+            position: relative;
+        }
+        
+        .code-container {
+            position: relative;
+        }
+        
+        .copy-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: var(--mc-green);
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            opacity: 0.8;
+            transition: all 0.3s;
+            z-index: 10;
+        }
+        
+        .copy-button:hover {
+            opacity: 1;
+            background: var(--mc-dark-green);
+            transform: scale(1.05);
+        }
+        
+        .copy-button.copied {
+            background: var(--mc-blue);
+        }
+        
+        .json {
+            background: #1a202c;
+            color: #68d391;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        
+        .bash {
+            background: #2d3748;
+            color: #cbd5e0;
+        }
+        
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid var(--mc-yellow);
+            margin: 20px 0;
+        }
+        
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid var(--mc-blue);
+            margin: 20px 0;
+        }
+        
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid var(--mc-green);
+            margin: 20px 0;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        th {
+            background: var(--mc-gray);
+            color: white;
+            font-weight: 600;
+        }
+        
+        .emoji {
+            font-size: 1.2em;
+            margin-right: 8px;
+        }
+        
+        .footer {
+            background: var(--mc-dark-brown);
+            color: white;
+            text-align: center;
+            padding: 30px 0;
+            margin-top: 50px;
+        }
+        
+        .footer p {
+            margin: 0;
+            opacity: 0.9;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background: var(--mc-green);
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: 600;
+            transition: all 0.3s;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        
+        .btn:hover {
+            background: var(--mc-dark-green);
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background: var(--mc-brown);
+        }
+        
+        .btn-secondary:hover {
+            background: var(--mc-dark-brown);
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.5rem;
+            }
+            
+            .nav ul {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .main-content {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <h1>🎮 Minecraft 服务器状态查询 API</h1>
+            <p>一个高性能、功能丰富的 Minecraft 服务器状态查询 API，支持 Java 版和基岩版服务器</p>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="content">
+            <nav class="nav">
+                <ul>
+                    <li><a href="#features">✨ 特性</a></li>
+                    <li><a href="#quickstart">🚀 快速开始</a></li>
+                    <li><a href="#api">📖 API 文档</a></li>
+                    <li><a href="#config">⚙️ 配置</a></li>
+                    <li><a href="#troubleshooting">🔧 故障排除</a></li>
+                </ul>
+            </nav>
+            
+            <div class="main-content">
+                <section id="features">
+                    <h2><span class="emoji">✨</span>特性</h2>
+                    <div class="feature-grid">
+                        <div class="feature-card">
+                            <h3>🚀 多版本支持</h3>
+                            <p>支持 Java 版和基岩版 Minecraft 服务器查询</p>
+                        </div>
+                        <div class="feature-card">
+                            <h3>🔍 灵活查询</h3>
+                            <p>支持预配置服务器名称查询和直接 IP:Port 查询</p>
+                        </div>
+                        <div class="feature-card">
+                            <h3>💾 智能缓存</h3>
+                            <p>内置缓存机制，减少重复查询，提高响应速度</p>
+                        </div>
+                        <div class="feature-card">
+                            <h3>🛡️ 安全防护</h3>
+                            <p>内置速率限制和管理员权限验证</p>
+                        </div>
+                        <div class="feature-card">
+                            <h3>📊 详细日志</h3>
+                            <p>完整的请求日志和错误追踪</p>
+                        </div>
+                        <div class="feature-card">
+                            <h3>🌐 SRV 记录支持</h3>
+                            <p>支持 Minecraft SRV DNS 记录解析</p>
+                        </div>
+                    </div>
+                </section>
+                
+                <section id="quickstart">
+                    <h2><span class="emoji">🚀</span>快速开始</h2>
+                    
+                    <h3>下载源码</h3>
+                    <div class="code-container">
+                        <div class="code-block bash">git clone https://github.com/FurCraft-Official/FurAPI-mc.git</div>
+                        <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                    </div>
+                    
+                    <h3>安装依赖</h3>
+                    <div class="code-container">
+                        <div class="code-block bash">npm install</div>
+                        <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                    </div>
+                    
+                    <h3>启动服务</h3>
+                    <div class="code-container">
+                        <div class="code-block bash"># 开发模式
+npm run dev
+
+# 生产模式
+npm start</div>
+                        <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                    </div>
+                    
+                    <h3>Docker 部署</h3>
+                    <div class="code-container">
+                        <div class="code-block bash"># 构建镜像
+docker build -t mc-status-api .
+
+# 运行容器
+docker run -p 3000:3000 mc-status-api</div>
+                        <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                    </div>
+                </section>
+                
+                <section id="api">
+                    <h2><span class="emoji">📖</span>API 文档</h2>
+                    
+                    <div class="info">
+                        <strong>基础信息</strong><br>
+                        • 基础URL: <code>http://localhost:3000</code><br>
+                        • 数据格式: JSON<br>
+                        • 字符编码: UTF-8
+                    </div>
+                    
+                    <h3>🔍 查询端点</h3>
+                    
+                    <div class="endpoint-card">
+                        <h4><span class="http-method get">GET</span>获取所有预配置服务器列表</h4>
+                        <div class="code-container">
+                            <div class="code-block bash">GET /api/servers</div>
+                            <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                        </div>
+                        <p><strong>响应示例:</strong></p>
+                        <div class="code-container">
+                            <div class="code-block json">{
+  "servers": [
+    {
+      "name": "hypixel",
+      "type": "java",
+      "isSrv": false,
+      "address": "mc.hypixel.net",
+      "port": 25565
+    }
+  ]
+}</div>
+                            <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                        </div>
+                    </div>
+                    
+                    <div class="endpoint-card">
+                        <h4><span class="http-method get">GET</span>查询单个预配置服务器状态</h4>
+                        <div class="code-container">
+                            <div class="code-block bash">GET /api/stats/{serverName}</div>
+                            <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                        </div>
+                        <p><strong>参数说明:</strong><br>
+                        • <code>serverName</code>: 在 <code>config/servers.txt</code> 中配置的服务器名称</p>
+                        <p><strong>响应示例:</strong></p>
+                        <div class="code-container">
+                            <div class="code-block json">{
+  "name": "hypixel",
+  "online": true,
+  "type": "java",
+  "version": "1.8.x-1.20.x",
+  "players": {
+    "online": 45231,
+    "max": 200000
+  },
+  "ping": 45,
+  "timestamp": 1703123456789,
+  "motd": "Hypixel Network [1.8-1.20]",
+  "icon": "data:image/png;base64,..."
+}</div>
+                            <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                        </div>
+                    </div>
+                    
+                    <div class="endpoint-card">
+                        <h4><span class="http-method get">GET</span>🆕 直接查询 IP:Port 服务器状态</h4>
+                        <div class="code-container">
+                            <div class="code-block bash">GET /api/stats/direct/{ip:port}
+GET /api/stats/direct/{ip:port:type}</div>
+                            <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                        </div>
+                        
+                        <div class="success">
+                            <strong>支持格式:</strong><br>
+                            • <code>127.0.0.1:25565</code> - Java版服务器（默认）<br>
+                            • <code>192.168.1.100:19132:bedrock</code> - 基岩版服务器<br>
+                            • <code>[2001:db8::1]:25565:java</code> - IPv6地址<br>
+                            • <code>example.com:25566:java</code> - 域名+端口
+                        </div>
+                        
+                        <p><strong>示例请求:</strong></p>
+                        <div class="code-container">
+                            <div class="code-block bash"># Java版服务器
+curl "http://localhost:3000/api/stats/direct/mc.hypixel.net:25565"
+
+# 基岩版服务器
+curl "http://localhost:3000/api/stats/direct/mco.mineplex.com:19132:bedrock"
+
+# IPv6地址
+curl "http://localhost:3000/api/stats/direct/[2001:db8::1]:25565"</div>
+                            <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                        </div>
+                    </div>
+                    
+                    <h3>🛠️ 管理端点</h3>
+                    <div class="warning">
+                        <strong>⚠️ 注意:</strong> 需要在环境变量中设置 <code>ADMIN_TOKEN</code>
+                    </div>
+                    
+                    <div class="endpoint-card">
+                        <h4><span class="http-method post">POST</span>清除缓存</h4>
+                        <div class="code-container">
+                            <div class="code-block bash">POST /api/admin/cache/clear?token={ADMIN_TOKEN}</div>
+                            <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                        </div>
+                    </div>
+                    
+                    <div class="endpoint-card">
+                        <h4><span class="http-method post">POST</span>重新加载配置</h4>
+                        <div class="code-container">
+                            <div class="code-block bash">POST /api/admin/reload?token={ADMIN_TOKEN}</div>
+                            <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                        </div>
+                    </div>
+                    
+                    <div class="endpoint-card">
+                        <h4><span class="http-method get">GET</span>🏥 健康检查</h4>
+                        <div class="code-container">
+                            <div class="code-block bash">GET /health</div>
+                            <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                        </div>
+                    </div>
+                </section>
+                
+                <section id="config">
+                    <h2><span class="emoji">⚙️</span>配置文件</h2>
+                    
+                    <h3>主配置文件 (config/config.json)</h3>
+                    <div class="code-container">
+                        <div class="code-block json">{
+  "listenIP": "0.0.0.0",
+  "http": {
+    "port": 3000
+  },
+  "https": {
+    "enabled": false,
+    "port": 3443,
+    "keyPath": "./ssl/private.key",
+    "certPath": "./ssl/certificate.crt"
+  },
+  "staticDir": "./public",
+  "cache": {
+    "enabled": true,
+    "ttl": 60000
+  },
+  "rateLimit": {
+    "enabled": true,
+    "windowMs": 60000,
+    "max": 100
+  },
+  "logging": {
+    "level": "info",
+    "console": true,
+    "file": "./logs/api.log",
+    "colors": true,
+    "timestamp": true,
+    "maxFileSize": 10485760
+  }
+}</div>
+                        <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                    </div>
+                    
+                    <h3>服务器配置文件 (config/servers.txt)</h3>
+                    <div class="code-container">
+                        <div class="code-block bash"># Minecraft 服务器配置文件
+# 格式: 服务器名称=地址:端口:类型:是否SRV记录
+# 端口: Java版默认25565，基岩版默认19132
+# 类型: java(默认) 或 bedrock
+# SRV记录: true 或 false(默认)
+
+# Java版服务器
+hypixel=mc.hypixel.net:25565:java:false
+mineplex=us.mineplex.com:25565:java:false
+
+# 基岩版服务器
+bedrock-server=mco.mineplex.com:19132:bedrock:false
+
+# 使用SRV记录的服务器
+srv-example=_minecraft._tcp.example.com:25565:java:true
+
+# 本地服务器
+local-java=localhost:25565:java:false
+local-bedrock=localhost:19132:bedrock:false</div>
+                        <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                    </div>
+                    
+                    <h3>环境变量 (.env)</h3>
+                    <div class="code-container">
+                        <div class="code-block bash"># 管理员令牌（用于管理接口）
+ADMIN_TOKEN=your_secret_admin_token_here
+
+# 可选：数据库连接等其他配置
+# DATABASE_URL=mongodb://localhost:27017/mcstatus</div>
+                        <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                    </div>
+                </section>
+                
+                <section id="troubleshooting">
+                    <h2><span class="emoji">🔧</span>故障排除</h2>
+                    
+                    <h3>常见问题</h3>
+                    
+                    <h4>1. 服务器无法访问</h4>
+                    <div class="warning">
+                        <strong>问题:</strong> API 返回 <code>连接超时</code> 或 <code>连接被拒绝</code><br><br>
+                        <strong>解决方案:</strong><br>
+                        • 检查目标服务器是否在线<br>
+                        • 确认端口号是否正确<br>
+                        • 检查防火墙设置<br>
+                        • 验证网络连接
+                    </div>
+                    
+                    <h4>2. SRV 记录解析失败</h4>
+                    <div class="warning">
+                        <strong>问题:</strong> SRV 记录服务器返回解析错误<br><br>
+                        <strong>解决方案:</strong><br>
+                        • 确认 DNS 服务器可以访问<br>
+                        • 验证 SRV 记录格式是否正确<br>
+                        • 检查域名是否存在对应的 SRV 记录
+                    </div>
+                    
+                    <h4>3. 速率限制触发</h4>
+                    <div class="warning">
+                        <strong>问题:</strong> 收到 <code>429 Too Many Requests</code> 错误<br><br>
+                        <strong>解决方案:</strong><br>
+                        • 减少请求频率<br>
+                        • 调整配置文件中的速率限制参数<br>
+                        • 使用缓存来减少重复请求
+                    </div>
+                    
+                    <h3>调试模式</h3>
+                    <p>启用详细日志输出：</p>
+                    <div class="code-container">
+                        <div class="code-block json">{
+  "logging": {
+    "level": "debug"
+  }
+}</div>
+                        <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                    </div>
+                </section>
+                
+                <section>
+                    <h2><span class="emoji">🏗️</span>项目结构</h2>
+                    <div class="code-container">
+                        <div class="code-block bash">FurAPI-mc/
+├── app.js              # 主应用文件
+├── init.js             # 初始化脚本
+├── log.js              # 日志管理器
+├── web.js              # Web服务器模块
+├── package.json        # 项目依赖配置
+├── config/             # 配置文件目录
+│   ├── config.json     # 主配置文件
+│   └── servers.txt     # 服务器列表配置
+├── logs/               # 日志文件目录
+├── ssl/                # SSL证书目录
+├── public/             # 静态文件目录
+└── dist/               # 编译输出目录</div>
+                        <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                    </div>
+                </section>
+                
+                <section>
+                    <h2><span class="emoji">🛠️</span>构建和部署</h2>
+                    
+                    <h3>开发模式</h3>
+                    <div class="code-container">
+                        <div class="code-block bash">npm run dev</div>
+                        <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                    </div>
+                    
+                    <h3>构建可执行文件</h3>
+                    <div class="code-container">
+                        <div class="code-block bash"># 构建所有平台
+npm run build:all
+
+# 构建特定平台
+npm run build:win      # Windows x64
+npm run build:linux    # Linux x64
+npm run build:mac      # macOS x64</div>
+                        <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                    </div>
+                </section>
+                
+                <section>
+                    <h2><span class="emoji">📊</span>监控和日志</h2>
+                    
+                    <h3>日志级别</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>级别</th>
+                                <th>描述</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>debug</code></td>
+                                <td>详细调试信息</td>
+                            </tr>
+                            <tr>
+                                <td><code>info</code></td>
+                                <td>一般信息记录</td>
+                            </tr>
+                            <tr>
+                                <td><code>warn</code></td>
+                                <td>警告信息</td>
+                            </tr>
+                            <tr>
+                                <td><code>error</code></td>
+                                <td>错误信息</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <h3>日志格式</h3>
+                    <div class="code-container">
+                        <div class="code-block bash">2024-01-01 12:00:00 INFO 192.168.1.100 /api/stats/hypixel 在线 45231/200000 [java] 45ms</div>
+                        <button class="copy-button" onclick="copyCode(this)">📋 复制</button>
+                    </div>
+                </section>
+                
+                <section>
+                    <h2><span class="emoji">🤝</span>贡献</h2>
+                    <p>欢迎提交 Issue 和 Pull Request！</p>
+                    
+                    <div class="success">
+                        <strong>开发流程:</strong><br>
+                        1. Fork 本项目<br>
+                        2. 创建功能分支 (<code>git checkout -b feature/amazing-feature</code>)<br>
+                        3. 提交更改 (<code>git commit -m 'Add some amazing feature'</code>)<br>
+                        4. 推送到分支 (<code>git push origin feature/amazing-feature</code>)<br>
+                        5. 创建 Pull Request
+                    </div>
+                </section>
+                
+                <section>
+                    <h2><span class="emoji">🙏</span>致谢</h2>
+                    <ul>
+                        <li><strong>mc-ping-updated</strong> - Java版服务器ping库</li>
+                        <li><strong>Express.js</strong> - Web框架</li>
+                        <li><strong>Node.js</strong> - JavaScript运行环境</li>
+                    </ul>
+                </section>
+            </div>
+        </div>
+    </div>
+    
+    <div class="footer">
+        <div class="container">
+            <p>
+                <a href="https://github.com/FurCraft-Official/FurAPI-mc" target="_blank" style="color: #4CAF50; text-decoration: none; margin: 0 15px;">
+                    📦 Github仓库
+                </a>
+                <a href="https://www.furcraft.top" target="_blank" style="color: #4CAF50; text-decoration: none; margin: 0 15px;">
+                    🏠 FurCraft主页
+                </a>
+            </p>
+            <p>Copyright © 2023 - 2025 FurCraft. All rights reserved.</p>
+            <p>📄 本项目基于 GPL-3.0 许可证开源</p>
+        </div>
+    </div>
+    
+    <script>
+        function copyCode(button) {
+            const codeContainer = button.previousElementSibling;
+            const codeText = codeContainer.textContent;
+            
+            navigator.clipboard.writeText(codeText).then(function() {
+                // 改变按钮文本和样式
+                const originalText = button.innerHTML;
+                button.innerHTML = '✅ 已复制';
+                button.classList.add('copied');
+                
+                // 2秒后恢复原来的样式
+                setTimeout(function() {
+                    button.innerHTML = originalText;
+                    button.classList.remove('copied');
+                }, 2000);
+            }).catch(function() {
+                // 降级到选中文本
+                const range = document.createRange();
+                range.selectNodeContents(codeContainer);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+                
+                button.innerHTML = '📋 已选中';
+                setTimeout(function() {
+                    button.innerHTML = '📋 复制';
+                    selection.removeAllRanges();
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>
