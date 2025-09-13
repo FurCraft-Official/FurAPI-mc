@@ -11,7 +11,7 @@
   },
   "staticDir": "./public",
   "cache": {
-    "enabled": true,
+    "enabled": false,
     "ttl": 60000
   },
   "rateLimit": {
