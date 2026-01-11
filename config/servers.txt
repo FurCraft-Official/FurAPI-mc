@@ -8,14 +8,10 @@
 # Java版服务器
 hypixel=mc.hypixel.net:25565:java:false
 mineplex=us.mineplex.com:25565:java:false
-furcraft=play.furcraft.top:25565:java:false
-furmod=mod.furcraft.top:25565:java:false
-aaajava=_minecraft._tcp.furcraft.mcbbs.asia:25565:java:true
 
 # 基岩版服务器
 bedrock-server=mco.mineplex.com:19132:bedrock:false
 cubecraft-bedrock=mco.cubecraft.net:19132:bedrock:false
-aaabed=bed233fe-b9cc-c80a-7e95-bffc302bbe83.ofalias.com:31227:bedrock:false
 
 # 使用SRV记录的服务器
 srv-example=_minecraft._tcp.example.com:25565:java:true
@@ -27,4 +23,5 @@ test-server=127.0.0.1:25566:java:false
 
 # 其他服务器
 example1=example.com:25565:java:false
+
 example2=play.example.net:25567:java:false
